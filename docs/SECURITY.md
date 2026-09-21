@@ -8,7 +8,7 @@ These contracts are **registries**, not vaults. They never hold USDC. Escrow ris
 - Every write and `upgrade` calls `require_auth` on that admin.
 - A non-admin address panics with `not admin` even if the caller can sign.
 
-KutanaPay production wires that admin to the Signing Service. An outsider deploy uses whatever `G…` they pass at deploy.
+Deploy uses whatever admin `G…` is passed at construct time.
 
 ## Upgrade
 

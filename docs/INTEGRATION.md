@@ -1,6 +1,6 @@
 # Integration guide — deal events to chain
 
-Architecture-level map of how Trade Secure drives **Trustless Work escrow** and these two registries. No secrets. Writers in production are KutanaPay's Signing Service; an outsider deploying these contracts only needs an admin `G…` they control.
+Architecture-level map of how Trade Secure drives **Trustless Work escrow** and these two registries. Deploying these contracts requires an admin `G…` the deployer controls.
 
 ```
 Buyer / seller actions on Trade Secure
@@ -55,11 +55,3 @@ The SEP-53 digest is used as an **off-chain signing gate** for the approver key.
 Hashes must be SHA-256 of the **document bytes** (or a documented canonical encoding) so a partner holding the PDF can match the chain. Mapping S3 keys instead of file bytes will not survive an independent hash check.
 
 `deal_id` / `claim_id` on chain are `BytesN<32>` digests of the off-chain UUIDs, not the UUID ASCII.
-
-## What this repo is not
-
-- Not the KutanaPay backend, web app, or back office (those stay private)
-- Not the Signing Service, outbox, or indexer
-- Not Trustless Work
-- Not a wallet or user-facing dapp
-- Not KYC documents, insurance PDFs, or signing secrets

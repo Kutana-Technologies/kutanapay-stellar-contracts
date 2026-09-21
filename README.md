@@ -11,19 +11,7 @@ Escrow funds are **not** held here. USDC escrow uses [Trustless Work](https://ww
 | [`kyb-attestation-registry`](kyb-attestation-registry/) | Subject G-address → tier, expiry, revoked | Names, documents, emails, KYC PII |
 | [`insurance-record`](insurance-record/) | Deal/claim ids (hashed) → policy/claim/payout hashes + status | Policy PDFs, claim narratives, payout bank details |
 
-**License:** [Apache License 2.0](LICENSE) applies **only** to this repository (the two Soroban crates and these docs).
-
-## What stays private (not in this repo, not Apache-licensed here)
-
-| Keep off this repo | Why |
-|--------------------|-----|
-| KutanaPay backend (`service-kutanapay`), web apps, back office | Product platform, not the open-source contracts |
-| Signing Service, outbox workers, deal-create KYB gate | Writers and keys; production wiring |
-| Clerk, JWTs, Heroku/DB URLs, `.env` | Credentials |
-| Stellar **S…** secrets for admin / attester / treasury / release | Can move funds or overwrite registries |
-| KYC/KYB documents, insurance PDFs, emails, bank details | PII / commercial data (only hashes go on-chain) |
-
-Outsiders can build and deploy these contracts with their own admin `G…`. They do not need KutanaPay's private services. Platform writers are described at architecture level in [docs/INTEGRATION.md](docs/INTEGRATION.md).
+**License:** [Apache License 2.0](LICENSE).
 
 ## Documentation (SCF)
 
