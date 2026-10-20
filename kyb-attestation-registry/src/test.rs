@@ -1,5 +1,3 @@
-#![cfg(test)]
-
 use super::*;
 use soroban_sdk::{
     testutils::{Address as _, MockAuth, MockAuthInvoke},
@@ -41,7 +39,12 @@ fn admin_can_revoke() {
     let admin = Address::generate(&env);
     let subject = Address::generate(&env);
     let c = client(&env, &admin);
-    c.write_attestation(&admin, &subject, &Symbol::new(&env, "standard"), &1_900_000_000);
+    c.write_attestation(
+        &admin,
+        &subject,
+        &Symbol::new(&env, "standard"),
+        &1_900_000_000,
+    );
     c.revoke_attestation(&admin, &subject);
     let row = c.get_attestation(&subject).expect("row");
     assert!(row.revoked);
@@ -108,6 +111,64 @@ fn write_requires_admin_auth() {
             sub_invokes: &[],
         },
     }]);
-    c.write_attestation(&admin, &subject, &Symbol::new(&env, "standard"), &1_900_000_000);
+    c.write_attestation(
+        &admin,
+        &subject,
+        &Symbol::new(&env, "standard"),
+        &1_900_000_000,
+    );
     assert!(c.get_attestation(&subject).is_some());
+}
+
+#[test]
+#[should_panic(expected = "not admin")]
+fn non_admin_cannot_revoke() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    let subject = Address::generate(&env);
+    let c = client(&env, &admin);
+    c.write_attestation(
+        &admin,
+        &subject,
+        &Symbol::new(&env, "standard"),
+        &1_900_000_000,
+    );
+    c.revoke_attestation(&stranger, &subject);
+}
+
+#[test]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
+fn admin_address_without_admin_signature_is_rejected() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let subject = Address::generate(&env);
+    let c = client(&env, &admin);
+    c.write_attestation(
+        &admin,
+        &subject,
+        &Symbol::new(&env, "standard"),
+        &1_900_000_000,
+    );
+}
+
+#[test]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
+fn stranger_cannot_upgrade() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    let c = client(&env, &admin);
+    let hash = BytesN::from_array(&env, &[7u8; 32]);
+    env.mock_auths(&[MockAuth {
+        address: &stranger,
+        invoke: &MockAuthInvoke {
+            contract: &c.address,
+            fn_name: "upgrade",
+            args: (hash.clone(),).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    c.upgrade(&hash);
 }

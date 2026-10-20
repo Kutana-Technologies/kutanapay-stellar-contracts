@@ -7,3 +7,4 @@
 *.swp
 .idea/
 .vscode/
+test_snapshots/

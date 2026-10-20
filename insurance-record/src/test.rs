@@ -1,7 +1,8 @@
-#![cfg(test)]
-
 use super::*;
-use soroban_sdk::{testutils::Address as _, Address, BytesN, Env};
+use soroban_sdk::{
+    testutils::{Address as _, MockAuth, MockAuthInvoke},
+    Address, BytesN, Env, IntoVal,
+};
 
 fn client<'a>(env: &'a Env, admin: &Address) -> InsuranceRecordClient<'a> {
     let id = env.register(InsuranceRecord, (admin,));
@@ -29,7 +30,13 @@ fn admin_can_record_and_read_policy() {
     let deal = h32(&env, 1);
     let escrow = h32(&env, 2);
     let policy_hash = h32(&env, 3);
-    c.record_policy(&admin, &deal, &escrow, &policy_hash, &Symbol::new(&env, "issued"));
+    c.record_policy(
+        &admin,
+        &deal,
+        &escrow,
+        &policy_hash,
+        &Symbol::new(&env, "issued"),
+    );
     let row = c.get_policy(&deal).expect("policy");
     assert_eq!(row.escrow_id, escrow);
     assert_eq!(row.policy_hash, policy_hash);
@@ -84,4 +91,79 @@ fn missing_policy_is_none() {
     let admin = Address::generate(&env);
     let c = client(&env, &admin);
     assert!(c.get_policy(&h32(&env, 1)).is_none());
+}
+
+#[test]
+#[should_panic(expected = "not admin")]
+fn non_admin_cannot_record_claim_decision() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    let c = client(&env, &admin);
+    c.record_claim_decision(
+        &stranger,
+        &h32(&env, 1),
+        &h32(&env, 9),
+        &Symbol::new(&env, "approved"),
+        &h32(&env, 4),
+    );
+}
+
+#[test]
+#[should_panic(expected = "not admin")]
+fn non_admin_cannot_record_payout_receipt() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    let c = client(&env, &admin);
+    c.record_payout_receipt(&stranger, &h32(&env, 1), &h32(&env, 9), &h32(&env, 5));
+}
+
+#[test]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
+fn admin_address_without_admin_signature_is_rejected() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    let c = client(&env, &admin);
+    let status = Symbol::new(&env, "issued");
+    env.mock_auths(&[MockAuth {
+        address: &stranger,
+        invoke: &MockAuthInvoke {
+            contract: &c.address,
+            fn_name: "record_policy",
+            args: (
+                admin.clone(),
+                h32(&env, 1),
+                h32(&env, 2),
+                h32(&env, 3),
+                status.clone(),
+            )
+                .into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    c.record_policy(&admin, &h32(&env, 1), &h32(&env, 2), &h32(&env, 3), &status);
+}
+
+#[test]
+#[should_panic(expected = "Error(Auth, InvalidAction)")]
+fn stranger_cannot_upgrade() {
+    let env = Env::default();
+    let admin = Address::generate(&env);
+    let stranger = Address::generate(&env);
+    let c = client(&env, &admin);
+    let hash = h32(&env, 7);
+    env.mock_auths(&[MockAuth {
+        address: &stranger,
+        invoke: &MockAuthInvoke {
+            contract: &c.address,
+            fn_name: "upgrade",
+            args: (hash.clone(),).into_val(&env),
+            sub_invokes: &[],
+        },
+    }]);
+    c.upgrade(&hash);
 }
