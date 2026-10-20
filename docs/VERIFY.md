@@ -1,52 +1,87 @@
-# Independently verify on-chain state
+# Verification Guide
 
-You do not need KutanaPay software. Use Stellar CLI, Horizon, or [Stellar Expert](https://stellar.expert).
+You can verify everything these contracts publish yourself, using only public tools.
 
-## Escrow (Trustless Work)
+**You need:** [Stellar CLI](https://developers.stellar.org/docs/tools/cli/install-cli) 28.0.0 and `sha256sum`. [Stellar Expert](https://stellar.expert) offers a browser alternative for most steps.
 
-Given a contract id `C…` on testnet:
-
-```bash
-stellar contract invoke --network testnet --id CCNCAGX7SHZTXRMZQ4RAY3BH34NVC2GOMAN3KI3HXJS7FBWUYMMERBPL -- get_escrow
-stellar tx fetch --network testnet --hash <TX_HASH>
-```
-
-Expert: `https://stellar.expert/explorer/testnet/contract/<C_ID>` and `/tx/<HASH>`.
-
-Confirm `engagement_id` matches the Trade Secure deal reference (for example `TDS-32077145`) and milestone flags (`approved` / `released`).
-
-## SEP-53 delivery attestation
-
-The public log is the platform `GET /onchain/deals/{id}/attestations` row: `message_hash`, `signature`, `attester_public_key`, canonical JSON.
-
-1. Canonicalize the JSON (sorted keys, no extra whitespace).
-2. Verify with SEP-53 (`Stellar Signed Message:\n` + SHA-256, Ed25519) against the attester G-address.
-3. The matching on-chain action is the `approve_milestone` transaction for that milestone index, not a separate attestation contract.
-
-The attester used on KutanaPay testnet is `GBRTFYSW76RKCO333MXEH5IPCDXF4UDSR5M5UUXCTMJDEXHCFPNXBUEL`.
-
-## KYB standing
+**Setup:** `invoke` needs a source account even for read-only calls. Any funded account works. With `--send no`, nothing is submitted.
 
 ```bash
-stellar contract invoke \
-  --network testnet \
-  --id CDCI7A4S4PK2NBTS5R3TIGLWZX5IDARBU6JC75I5TFGQBOLEUGY2BEOG \
-  -- get_attestation --subject G...
+stellar keys generate reader --network testnet --fund
+ID=<CONTRACT_ID>
 ```
 
-Treat as valid for trading only if the result is present, `revoked=false`, and `expires_at` is still in the future (unix seconds).
+## 1. Verify the deployed code
 
-## Insurance record
+1. Download the deployed WASM and hash it:
+
+   ```bash
+   stellar contract fetch --network testnet --id $ID -o deployed.wasm
+   sha256sum deployed.wasm
+   ```
+
+2. Find out which version is deployed:
+
+   ```bash
+   stellar contract info meta --network testnet --contract-id $ID   # binver, rsver, cliver
+   ```
+
+3. Rebuild that version from source:
+
+   ```bash
+   git clone https://github.com/Kutana-Technologies/kutanapay-stellar-contracts
+   cd kutanapay-stellar-contracts
+   git checkout <commit for that version, see CHANGELOG.md>
+   stellar contract build --locked
+   sha256sum target/wasm32v1-none/release/*.wasm
+   ```
+
+4. Compare the hashes. They must be identical.
+
+> [!NOTE]
+> Build with the Rust version shown in `rsver`. Releases from 0.2.1 onward pin it in `rust-toolchain.toml`. For 0.2.0, set `RUSTUP_TOOLCHAIN=1.98.1`.
+
+## 2. Verify who controls the contract
 
 ```bash
-stellar contract invoke \
-  --network testnet \
-  --id CA72PPLD6EBTSETH4HPVK35QK6DAUSK4TYKJENK2ZEG4XNRM5V2LU3DS \
-  -- get_policy --deal_id <32-byte-hash-hex>
+stellar contract invoke --network testnet --source-account reader --send no --id $ID -- get_admin
+stellar contract invoke --network testnet --source-account reader --send no --id $ID -- get_pending_admin
 ```
 
-Hash the policy document with SHA-256 and compare to `policy_hash`. Repeat for claim `decision_hash` and `receipt_hash`.
+To review past upgrades and admin changes, look up the contract's `upgraded`, `adm_prop`, `adm_set` and `adm_cncl` events.
 
-## SEP-1
+## 3. Verify KYB standing
 
-Organization accounts: `https://kutanapay.com/.well-known/stellar.toml`
+```bash
+stellar contract invoke --network testnet --source-account reader --send no \
+  --id $ID -- is_valid --subject <G-ADDRESS>
+```
+
+To see the underlying record (tier, expiry, revocation), call `get_attestation` with the same argument.
+
+## 4. Verify an insurance record
+
+1. Compute the identifiers, using the encoding documented by the record's publisher:
+
+   ```bash
+   CLAIM_ID=$(printf '%s' '<claim-identifier>' | sha256sum | cut -d' ' -f1)
+   ```
+
+2. Read the records:
+
+   ```bash
+   stellar contract invoke --network testnet --source-account reader --send no \
+     --id $ID -- get_policy --deal_id <DEAL_ID>
+   stellar contract invoke --network testnet --source-account reader --send no \
+     --id $ID -- get_claim --claim_id $CLAIM_ID
+   ```
+
+3. Compare each hash with the SHA-256 of the corresponding document you hold:
+
+   | Field | Document |
+   |---|---|
+   | `policy_hash` | Policy |
+   | `decision_hash` | Claim decision |
+   | `receipt_hash` | Payout receipt |
+
+To find when each record was written, and by which transaction, use the contract's `policy`, `decision` and `payout` events or its transaction history on Stellar Expert.
