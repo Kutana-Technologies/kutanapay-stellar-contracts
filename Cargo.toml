@@ -3,10 +3,11 @@ resolver = "2"
 members = [
     "kyb-attestation-registry",
     "insurance-record",
+    "upgrade-tests",
 ]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 
 [workspace.dependencies]
