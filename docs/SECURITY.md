@@ -1,29 +1,69 @@
-# Security notes
+# Security Model
 
-These contracts are **registries**, not vaults. They never hold USDC. Escrow risk sits with Trustless Work's audited contracts.
+This document describes what the contracts guarantee, what they assume, and how they are protected. To report a vulnerability, follow the [security policy](../SECURITY.md).
 
-## Authorization
+## Scope
 
-- Admin is set once in `__constructor`.
-- Every write and `upgrade` calls `require_auth` on that admin.
-- A non-admin address panics with `not admin` even if the caller can sign.
+The contracts are **registries**. They hold no assets and make no external calls. Their purpose is to make records public, attributable and tamper-evident.
 
-Deploy uses whatever admin `G…` is passed at construct time.
+## Trust assumptions
 
-## Upgrade
+| Assumption | Why it is needed |
+|---|---|
+| The operator keeps the admin key secure | The admin is the only writer and can upgrade the contract |
+| The admin records accurate information | The contracts guarantee integrity and provenance, not that a record is true |
+| Readers use the documented checks | For example, `is_valid` for KYB standing |
 
-`upgrade(new_wasm_hash)` replaces WASM in place (same `C…`, same storage). There is no timelock or two-key scheme in v0.2. Treat the admin key as high value. SDF Audit Bank review (authorization, upgrade posture, denial/griefing) is planned before mainnet general availability.
+## Guarantees
 
-## Denial / griefing
+### Access control
 
-- KYB: admin can overwrite or revoke any subject. There is no per-subject self-service.
-- Insurance: `record_payout_receipt` can insert a stub claim if none exists. Writers should require an existing decision row off-chain.
-- Reads are free of auth; spam is limited to whoever can pay to write (admin only).
+- Only the stored admin can create, change or revoke records. Each write checks the supplied `admin` against the stored value, then requires that address's authorization.
+- Only the stored admin can nominate a successor, cancel a nomination, or upgrade the contract.
+- Only the nominee can accept the admin role, so the role cannot pass to an address that nobody controls.
+- Read and storage-extension functions cannot change any record.
 
-## Expiry
+### Record integrity
 
-KYB `expires_at` is stored but **not** enforced inside `get_attestation`. Enforcing expiry on-chain would be a v0.3 behavior change (new WASM + `upgrade`). Until then, every reader must filter.
+| Guarantee | Enforced by |
+|---|---|
+| A revocation persists until it is explicitly reinstated | `write_attestation` rejects revoked subjects |
+| Writes that arrive out of order cannot bypass a revocation | Revoking an unknown subject records it as revoked |
+| KYB standing is never written already expired | `expires_at` must be in the future |
+| Every payout is backed by an approved decision for the same deal | `record_payout_receipt` checks the claim |
+| Paid claims are final | The decision and receipt cannot change after payout |
+| A claim belongs to exactly one deal | `deal_id` cannot change |
+| Document commitments are meaningful | All-zero hashes are rejected |
+| Retries cannot corrupt state | Identical replays change nothing |
 
-## Tests in this repo
+### Transparency
 
-`cargo test --workspace` covers admin-only writes, revoke, policy/claim/payout round-trip, and missing-key reads. It does not replace an Audit Bank review.
+- Every state change, admin change and upgrade emits an event.
+- Release builds are reproducible. Anyone can confirm that the deployed code matches a source commit; see [VERIFY.md](VERIFY.md).
+
+### Privacy
+
+On-chain data is limited to account addresses, short codes, timestamps and 32-byte digests. Integrators must not use personal data as identifiers or as guessable hash preimages; see [INTEGRATION.md](INTEGRATION.md#1-derive-identifiers).
+
+### Availability
+
+- Third parties cannot add records, so they cannot fill contract storage.
+- Writes keep their own storage alive. Anyone can pay to extend storage lifetime, and archived entries can be restored.
+
+## Operational security
+
+| Control | Practice |
+|---|---|
+| Admin key | A dedicated multisig account with independent signers; see [DEPLOYMENT.md](DEPLOYMENT.md#choose-the-admin) |
+| Admin rotation | Two-step transfer; cancel nominations that are no longer wanted |
+| Upgrades | Built reproducibly, verified before and after, and announced by the `upgraded` event |
+| Monitoring | Alert on `upgraded`, `adm_prop`, `adm_set` and `adm_cncl` events |
+
+## Assurance
+
+| Activity | Status |
+|---|---|
+| Unit tests for every authorization path, validation rule and event | Run in CI; see [TESTING.md](TESTING.md) |
+| Upgrade tests from the previous release | Run in CI |
+| Mutation testing of the security checks | Performed for 0.3.0 |
+| Independent audit | Planned before mainnet; the report will be linked here |

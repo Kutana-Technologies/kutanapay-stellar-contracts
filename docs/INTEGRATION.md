@@ -1,57 +1,96 @@
-# Integration guide — deal events to chain
+# Integration Guide
 
-Architecture-level map of how Trade Secure drives **Trustless Work escrow** and these two registries. Deploying these contracts requires an admin `G…` the deployer controls.
+This guide is for developers who write records to the contracts, or read records from them in an application.
 
+## Before you start
+
+You need:
+
+- the contract ID of each contract you use;
+- to write records, the admin account's signing setup;
+- a [Stellar SDK](https://developers.stellar.org/docs/tools/sdks) for your language, or the Stellar CLI.
+
+## Writing records
+
+### 1. Derive identifiers
+
+The Insurance Record's `deal_id`, `claim_id` and `escrow_id` are opaque 32-byte values. Use a SHA-256 digest of a stable, canonical identifier from your own system:
+
+```bash
+printf '%s' 'your-canonical-id' | sha256sum
 ```
-Buyer / seller actions on Trade Secure
-        │
-        ▼
-Platform outbox (one row per deal event, idempotent)
-        │
-        ├── DEAL_ACCEPTED ──────────► Trustless Work: deploy multi-release escrow
-        ├── DEAL_FUNDED ────────────► Trustless Work: fund USDC
-        ├── DEAL_DELIVERY_CONFIRMED ► SEP-53 sign attestation
-        │                              └── DEAL_MILESTONE_APPROVED ► TW approve_milestone
-        ├── DEAL_MILESTONE_RELEASED ► Trustless Work: release
-        ├── KYC approved (business) ► KYB registry: write_attestation(subject G-address)
-        ├── KYC rejected            ► KYB registry: revoke_attestation
-        └── Insurance review approved / claim / payout
-                                    ► Insurance record: record_policy / record_claim_decision / record_payout_receipt
+
+Recommendations:
+
+- Fix one canonical encoding, such as lowercase hyphenated UUID strings in UTF-8, and document it.
+- Never use personal data as an identifier, or as a hash preimage that someone could guess.
+- For document hashes, hash the exact file bytes, so that anyone holding the file can recompute the hash and compare.
+
+### 2. Submit the write
+
+Each write takes the admin address as its first argument and must be authorized by that address. With the CLI:
+
+```bash
+stellar contract invoke --id <KYB_ID> --network testnet --source-account admin \
+  -- write_attestation --admin <ADMIN_ADDRESS> --subject <G-ADDRESS> \
+     --tier standard --expires_at 1924992000
 ```
 
-Neither authored contract holds funds. The worst case for a registry bug is a wrong standing or hash, not lost USDC.
+With an SDK:
 
-## Trustless Work escrow (not in this repo)
+1. Build the `invokeHostFunction` transaction.
+2. Simulate it, or call `prepareTransaction`.
+3. Sign it. If the admin is not the transaction source, also sign the admin's authorization entries.
+4. Submit it.
 
-KutanaPay does not ship a custom escrow WASM. On deal accept the platform deploys a Trustless Work multi-release contract with frozen roles (approver, service provider, release signer, dispute resolver, platform, receiver) and USDC as the trustline.
+### 3. Handle the result
 
-| Deal event | TW operation | Typical role |
-|------------|--------------|--------------|
-| Partner accepts | deploy escrow | deploy / platform |
-| Buyer pays (fiat settled, USDC in treasury) | `fund_escrow` | treasury |
-| Buyer confirms delivery | SEP-53 attestation, then `approve_milestone(index)` | approver |
-| Release | `release` for that milestone | release signer |
-| Dispute | TW dispute flags | dispute resolver |
+| Result | Meaning | Action |
+|---|---|---|
+| Success | The record was written, or an identical record already existed | Done |
+| `Error(Contract, #n)` | The request is not valid in the current state (see the [error tables](INTERFACES.md)) | Do not retry the same request. Fix the request or the order of operations. |
+| `Error(Auth, …)` | Authorization is missing or wrong | Check the signer configuration |
+| Network or timeout error | The outcome is unknown | Retry. Identical writes are idempotent. |
 
-Shipping currently does **not** write an attestation; only delivery confirmation does.
+Order-dependent cases:
 
-The SEP-53 digest is used as an **off-chain signing gate** for the approver key. The Trustless Work `approve_milestone` invoke itself is `(milestone_index, approver)` — it does not embed the digest unless you also set milestone `newEvidence` via change-status. For public hash-on-chain matching, pass the hex digest as evidence before or when approving.
+- **KYB re-approval after revocation:** call `reinstate_attestation`. `write_attestation` fails with `AttestationRevoked`.
+- **Payouts:** record the claim decision first. A payout submitted earlier fails with `ClaimNotFound`, and succeeds once the decision is recorded.
 
-## KYB registry writer
+## Reading records
 
-1. Admin approves a **business** KYC form.
-2. Platform provisions a Stellar G-address for the business if missing.
-3. Outbox `KYB_REGISTRY_WRITE` invokes `write_attestation(admin, subject, tier, expires_at)`.
-4. Deal create, when the KYB gate is on, requires both business counterparties to have a non-revoked, unexpired row.
+### KYB standing
 
-`subject` is the business G-address, never a user UUID.
+```bash
+stellar contract invoke --id <KYB_ID> --network testnet --source-account <any> --send no \
+  -- is_valid --subject <G-ADDRESS>
+```
 
-## Insurance record writer
+Use `is_valid` rather than reimplementing the rule. `get_attestation` returns the raw record, including expired and revoked attestations.
 
-1. Back-office insurance review **approved** → `record_policy(deal_id_hash, escrow_id_hash, policy_hash, status)`.
-2. Claim decision → `record_claim_decision`.
-3. Payout receipt → `record_payout_receipt`.
+### Insurance records
 
-Hashes must be SHA-256 of the **document bytes** (or a documented canonical encoding) so a partner holding the PDF can match the chain. Mapping S3 keys instead of file bytes will not survive an independent hash check.
+```bash
+stellar contract invoke --id <INS_ID> --network testnet --source-account <any> --send no \
+  -- get_claim --claim_id <64-hex>
+```
 
-`deal_id` / `claim_id` on chain are `BytesN<32>` digests of the off-chain UUIDs, not the UUID ASCII.
+Compare `policy_hash`, `decision_hash` and `receipt_hash` with the SHA-256 of the documents you hold.
+
+### Reading through RPC
+
+Read records through a **simulated contract call**, as shown above, rather than raw ledger-entry lookups. Entries whose TTL has lapsed are archived, and some RPC methods, such as `getLedgerEntries`, do not return archived entries. A simulated call either restores the entry or reports it correctly.
+
+## Indexing events
+
+Every state change emits an event; see the [event reference](INTERFACES.md#events). To follow a contract:
+
+1. Poll RPC `getEvents` with a contract filter.
+2. Store the cursor.
+3. Process events in ledger order.
+
+RPC providers keep events for a limited window, so persist them yourself if you need the full history.
+
+## Maintaining storage
+
+Writes extend the records they touch. Extend rarely written records periodically; anyone can do this. See [Deployment and operations](DEPLOYMENT.md#maintain-storage-lifetime).
