@@ -88,3 +88,6 @@ impl KybAttestationRegistry {
         admin.require_auth();
     }
 }
+
+#[cfg(test)]
+mod test;
