@@ -72,6 +72,7 @@ Rules:
 
 - The ID string is used exactly as stored, after trimming surrounding whitespace. UUIDs use the canonical lowercase hyphenated form, for example `3f2b6c1e-8a4d-4c2b-9e7f-1a2b3c4d5e6f`.
 - If a value is already 64 hexadecimal characters, it is treated as a precomputed digest and decoded directly rather than hashed again.
+
 Example:
 
 ```bash
