@@ -1,0 +1,12 @@
+[package]
+name = "upgrade-tests"
+version.workspace = true
+edition.workspace = true
+publish = false
+description = "Upgrade tests: deployed v0.2.0 WASM upgraded in place to the current release build."
+
+[lib]
+doctest = false
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }

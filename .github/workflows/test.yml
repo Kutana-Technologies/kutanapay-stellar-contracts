@@ -26,12 +26,6 @@ jobs:
       - name: Format
         run: cargo fmt --all -- --check
 
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-
-      - name: Test
-        run: cargo test --workspace --locked
-
       # Release builds use the same Stellar CLI as testnet deployments, so the
       # hashes printed below are comparable with the on-chain WASM hash.
       - name: Install Stellar CLI
@@ -46,6 +40,7 @@ jobs:
           sudo tar -xzf "$tarball" -C /usr/local/bin stellar
           stellar version
 
+      # The upgrade tests load this release WASM, so build before lint and test.
       - name: Build WASM
         run: stellar contract build --locked
 
@@ -56,3 +51,9 @@ jobs:
             sha256sum target/wasm32v1-none/release/*.wasm
             echo '```'
           } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
