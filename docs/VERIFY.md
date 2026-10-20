@@ -80,13 +80,15 @@ stellar contract invoke --network testnet --source-account reader --send no \
   --id $INS -- get_claim --claim_id $CLAIM_ID
 ```
 
-Then confirm the documents you hold:
+Then compare each hash with the record supplied by KutanaPay:
 
 | Field | Compare with |
 |---|---|
-| `policy_hash` | `sha256sum policy.pdf` |
-| `decision_hash` | `sha256sum claim-decision.pdf`. An all-zero value means no decision was recorded on-chain. |
-| `receipt_hash` | `sha256sum payout-receipt.pdf` |
+| `policy_hash` | SHA-256 of the policy record preimage |
+| `decision_hash` | SHA-256 of the claim decision preimage. An all-zero value means no decision was recorded on-chain. |
+| `receipt_hash` | SHA-256 of the payout receipt preimage |
+
+These hashes are computed over KutanaPay's canonical record references, not over document files. See [Document hashes](INTEGRATION.md#identifier-and-hash-encoding).
 
 To see when each record was written, and by whom, look up the contract's transaction history on Stellar Expert.
 

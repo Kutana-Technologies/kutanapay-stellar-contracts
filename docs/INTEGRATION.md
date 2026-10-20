@@ -66,20 +66,19 @@ Every `BytesN<32>` argument is derived from an off-chain value as follows:
 | `deal_id` | Trade Secure deal ID (UUID string) | `SHA-256(UTF-8(id))` |
 | `claim_id` | Claim ID (UUID string) | `SHA-256(UTF-8(id))` |
 | `escrow_id` | Trustless Work escrow contract address (`C…`), or `no-escrow` if none | `SHA-256(UTF-8(value))` |
-| `policy_hash`, `decision_hash`, `receipt_hash` | Document file | `SHA-256(file bytes)` |
+| `policy_hash`, `decision_hash`, `receipt_hash` | KutanaPay's canonical record for the policy, decision or payout receipt | `SHA-256` of that record (see below) |
 
 Rules:
 
 - The ID string is used exactly as stored, after trimming surrounding whitespace. UUIDs use the canonical lowercase hyphenated form, for example `3f2b6c1e-8a4d-4c2b-9e7f-1a2b3c4d5e6f`.
 - If a value is already 64 hexadecimal characters, it is treated as a precomputed digest and decoded directly rather than hashed again.
-- Document hashes are computed over the exact file bytes, not over a storage path or URL. That way anyone holding the file can recompute the hash.
-
 Example:
 
 ```bash
 printf '%s' '3f2b6c1e-8a4d-4c2b-9e7f-1a2b3c4d5e6f' | sha256sum   # deal_id
-sha256sum policy.pdf                                            # policy_hash
 ```
+
+**Document hashes.** The current Trade Secure writer computes `policy_hash`, `decision_hash` and `receipt_hash` over KutanaPay's canonical record references, not over document file bytes. The on-chain value is therefore a commitment that shows whether a record changed after it was anchored. A third party can confirm it only with the preimage supplied by KutanaPay. Hashing document file bytes directly, so that anyone holding the file can verify it, is planned.
 
 ## Operational requirements
 

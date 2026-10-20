@@ -66,7 +66,7 @@ Writing an attestation for a subject that was previously revoked replaces the ro
 
 ## Insurance Record
 
-Anchors trade-insurance documents to a deal, so that anyone holding a document can confirm it is the one recorded.
+Anchors trade-insurance records to a deal, so that later changes to those records can be detected.
 
 ### Functions
 
@@ -95,7 +95,7 @@ pub struct PolicyRecord {
 
 pub struct ClaimRecord {
     pub deal_id: BytesN<32>,
-    pub decision: Symbol,               // for example "approved", "rejected"
+    pub decision: Symbol,               // "approved" or "denied"
     pub decision_hash: BytesN<32>,
     pub receipt_hash: Option<BytesN<32>>,
 }

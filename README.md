@@ -8,7 +8,7 @@ Soroban smart contracts used by **KutanaPay Trade Secure** on the Stellar networ
 | Contract | Purpose | Stores | Never stores |
 |---|---|---|---|
 | [KYB Attestation Registry](kyb-attestation-registry/) | Public know-your-business (KYB) standing for a counterparty's Stellar account | Tier, expiry timestamp, revocation flag | Names, documents, contact details, or any other personal data |
-| [Insurance Record](insurance-record/) | Tamper-evident anchors for trade-insurance documents | SHA-256 digests of policy, claim-decision and payout documents, plus a status code | The documents themselves, claim narratives, or bank details |
+| [Insurance Record](insurance-record/) | Tamper-evident anchors for trade-insurance records | SHA-256 digests of policy, claim-decision and payout records, plus a status code | The documents themselves, claim narratives, or bank details |
 
 Both contracts are **registries, not vaults**. They hold no tokens and cannot move funds. Deal escrow is handled separately by [Trustless Work](https://www.trustlesswork.com/) escrow contracts, which are not part of this repository.
 

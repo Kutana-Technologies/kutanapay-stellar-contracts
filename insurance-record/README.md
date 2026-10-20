@@ -1,6 +1,6 @@
 # Insurance Record
 
-A Soroban contract that anchors trade-insurance documents to a Trade Secure deal. It records SHA-256 digests of the policy, claim decision and payout receipt, so anyone holding a document can confirm it matches the recorded one. It stores no documents and no personal data.
+A Soroban contract that anchors trade-insurance records to a Trade Secure deal. It records SHA-256 digests of the policy, the claim decision and the payout receipt, so later changes to those records can be detected. It stores no documents and no personal data.
 
 | | |
 |---|---|
