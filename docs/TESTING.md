@@ -1,32 +1,63 @@
-# Contract test plan
+# Test Plan
 
-`cargo test` against current `soroban-sdk` 22 + crates.io `testutils` hits a `rand_core` split in `soroban-env-host` and does not compile. Until that is remediationsed (SDK bump or a locked `testutils` graph), run:
+## Running the tests
 
 ```bash
-stellar contract build
-# or
-cargo build --release --target wasm32v1-none --workspace
+cargo test --workspace --locked
 ```
 
-## Cases to automate (unauthorized writer, revoke, round-trip)
+The tests use the Soroban SDK test environment (`soroban-sdk` with the `testutils` feature), which runs each contract inside a local Soroban host. No network access is needed.
 
-These match the SCF Tranche 2 suite: unauthorized writer rejection, expiry/revocation handling.
+Continuous integration runs, on every push to `main` and every pull request:
 
-**KYB**
+| Step | Command |
+|---|---|
+| Formatting | `cargo fmt --all -- --check` |
+| Lints | `cargo clippy --workspace --all-targets --locked -- -D warnings` |
+| Unit tests | `cargo test --workspace --locked` |
+| Release build | `stellar contract build --locked` (Stellar CLI 28.0.0), with the WASM SHA-256 hashes published in the job summary |
 
-- Constructor stores admin; `get_admin` returns it.
-- Admin `write_attestation` then `get_attestation` returns tier, expiry, `revoked=false`.
-- Admin `revoke_attestation` sets `revoked=true`.
-- Non-admin write panics `not admin`.
-- Rewrite after revoke clears `revoked` and updates tier.
-- Missing subject returns `None`.
-- Expiry is stored but **not** filtered by `get_attestation` — reader tests belong in the Python gate.
+## Coverage
 
-**Insurance**
+### KYB Attestation Registry ([`src/test.rs`](../kyb-attestation-registry/src/test.rs))
 
-- Admin `record_policy` round-trip on `get_policy`.
-- `record_claim_decision` then `record_payout_receipt` keeps decision and sets receipt.
-- Non-admin `record_policy` panics `not admin`.
-- Missing policy/claim returns `None`.
+| Test | Verifies |
+|---|---|
+| `constructor_sets_admin` | The admin is stored at deployment |
+| `admin_can_write_and_read_standing` | Write then read returns tier, expiry and `revoked = false` |
+| `admin_can_revoke` | Revocation sets `revoked = true` |
+| `rewrite_clears_revoked_flag` | A write after revocation replaces the row |
+| `get_missing_subject_is_none` | An unknown subject returns `None` |
+| `write_requires_admin_auth` | A write succeeds with exactly the admin's authorization for that call |
+| `non_admin_cannot_write` | A write from another address fails with `not admin` |
+| `non_admin_cannot_revoke` | A revoke from another address fails with `not admin` |
+| `admin_address_without_admin_signature_is_rejected` | Passing the admin address without its signature fails with `Error(Auth, InvalidAction)` |
+| `stranger_cannot_upgrade` | `upgrade` signed by another address fails with `Error(Auth, InvalidAction)` |
 
-On-chain verification of a live id: `stellar contract info interface --network testnet --id C…`.
+### Insurance Record ([`src/test.rs`](../insurance-record/src/test.rs))
+
+| Test | Verifies |
+|---|---|
+| `constructor_sets_admin` | The admin is stored at deployment |
+| `admin_can_record_and_read_policy` | A policy write and read round-trip |
+| `claim_decision_then_payout_receipt` | The payout receipt keeps the recorded decision and hash |
+| `missing_policy_is_none` | An unknown deal returns `None` |
+| `non_admin_cannot_record_policy` | Fails with `not admin` |
+| `non_admin_cannot_record_claim_decision` | Fails with `not admin` |
+| `non_admin_cannot_record_payout_receipt` | Fails with `not admin` |
+| `admin_address_without_admin_signature_is_rejected` | Fails with `Error(Auth, InvalidAction)` |
+| `stranger_cannot_upgrade` | Fails with `Error(Auth, InvalidAction)` |
+
+## Not covered by unit tests
+
+- **Consumer-side validity checks**, such as KYB expiry. These belong to consuming applications.
+- **Network behavior** such as TTL expiry and fees. Test it on testnet.
+- **Upgrade to a real new WASM.** Exercise it on testnet before each release.
+
+## Dependency note
+
+`soroban-env-host` 22 accepts any `ed25519-dalek` from 2.0 onward. Version 3.x depends on a newer `rand_core` and breaks the test build. `Cargo.lock` therefore keeps `ed25519-dalek` at 2.x. Avoid running `cargo update` without `--locked` checks, or re-pin it with:
+
+```bash
+cargo update -p ed25519-dalek --precise 2.2.0
+```

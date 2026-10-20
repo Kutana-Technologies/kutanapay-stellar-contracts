@@ -145,3 +145,6 @@ impl InsuranceRecord {
         admin.require_auth();
     }
 }
+
+#[cfg(test)]
+mod test;
